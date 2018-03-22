@@ -38,5 +38,4 @@ More test data would always be appreciated, so if you wish to include your resum
 relevant tests.
 
 The existing test data for this project is a collection of LinkedIn resumes I found on GitHub. If your resume is
-here, and you wish to have it removed, I'm easily reachable on Twitter at [@akhileshdarjee](https://twitter.com/akhileshdarjee),
-or open an issue on this repository.
+here, and you wish to have it removed.
