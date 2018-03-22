@@ -78,6 +78,14 @@ class Parser
     ];
 
     /**
+     * Search in pdf by this alternative title if section was not found
+     * @var array
+     */
+    protected $alternativeTitles = [
+        self::SKILLS_EXPERTISE => 'Specialties:'
+    ];
+
+    /**
      * @param string $filePath
      * @param array  $sections
      * @return ParsedResume
@@ -121,6 +129,7 @@ class Parser
 
         if ($this->shouldParseSection(self::SKILLS_EXPERTISE, $sections)) {
             $skills = $this->getSkills($textLines);
+            $skills = $this->filterSkills($skills);
             $parsedResumeInstance->setSkills($skills);
         }
 
@@ -398,7 +407,28 @@ class Parser
      */
     protected function getSkills(array $textLines): array
     {
-        return $this->getTextValues($this->findSectionLines(self::SKILLS_EXPERTISE, $textLines));
+        $skills = $this->findSectionLines(self::SKILLS_EXPERTISE, $textLines);
+
+        if (empty(count($skills))) {
+            $skills = $this->findSectionLines($this->alternativeTitles[self::SKILLS_EXPERTISE], $textLines);
+        }
+
+        return $this->getTextValues($skills);
+    }
+
+    /**
+     * @param array $skills
+     *
+     * @return string[]
+     */
+    private function filterSkills(array $skills): array
+    {
+        return array_filter($skills, function ($item) {
+            preg_match_all('/\w+/', $item, $matches);
+            $count = count($matches[0]);
+
+            return $count > 0 && $count < 4;
+        });
     }
 
     /**
