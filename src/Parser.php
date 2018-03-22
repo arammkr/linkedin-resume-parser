@@ -617,15 +617,20 @@ class Parser
      */
     protected function parseRoleParts(string $roleLine): array
     {
+        $roleLine = urlencode($roleLine);
+        $roleLine = preg_replace("@%[\dA-F]{2}@", ' ', $roleLine);
+        $roleLine = str_replace("+", ' ', $roleLine);
+
         $roleParts = $this->splitAndTrim(' at ', $roleLine);
 
         if (count($roleParts) === 2) {
             return $roleParts;
         } else if (count($roleParts) === 1) {
-            array_push($roleParts, $roleParts[0]);
+            array_push($roleParts, '');
             return $roleParts;
         } else if (count($roleParts) > 2) {
-            $roleParts = [$roleParts[0], end($roleParts)];
+            $last = array_pop($roleParts);
+            $roleParts = [implode('', $roleParts), $last];
             return $roleParts;
         } else {
             throw new ParseException("There was an error parsing the job title and organisation from the role line '${roleLine}'");
@@ -1150,10 +1155,8 @@ class Parser
         $recommendations = [];
 
         foreach ($recommendationLines as $key => $recommendationLine) {
- 
             $recommendationLineText = $recommendationLine->getText();
             $recommendationLineText = $this->cleanString($recommendationLineText);
-
             if (strpos($recommendationLineText, 'Profile Notes and Activity') === 0) {
                break;
             }
