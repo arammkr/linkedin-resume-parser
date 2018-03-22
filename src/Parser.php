@@ -241,7 +241,6 @@ class Parser
     protected function getAllTextLines(Document $parsedPdfInstance): array
     {
         $currentFont = new Font($parsedPdfInstance);
-
         $textLines = [];
 
         $libText = [];
@@ -356,7 +355,6 @@ class Parser
     }
 
     protected function splitFullName(string $fullName, string $name = null) {
-        $surname = '';
         if($name) {
             $splitted = explode($name, $fullName)[1];
         } else {
@@ -475,11 +473,6 @@ class Parser
                     $resultLines[] = $textLines[$i];
                 }
             }
-
-            // Debug
-            // foreach ($resultLines as $line) {
-            //      echo PHP_EOL . $line;
-            // }
         }
 
 
@@ -528,50 +521,29 @@ class Parser
     protected function buildRoleTypes(string $classType, array $roleLines): array
     {
         $roleTypes = [];
-
-        $currentGroupIndex = 0;
         $roleGroups = [];
-        $previousLineWasBold = false;
+        $currentGroupIndex = 0;
 
         foreach ($roleLines as $key => $roleLine) {
 
             $roleLineText = $roleLine->getText();
 
-            if(preg_match('/\d{4} \s+-.*/', $roleLineText)) {
-                $previousLineWasBold = false;
-                $roleGroups[$currentGroupIndex]['date'] = trim(preg_replace('/[\s\x00]/u', ' ', $roleLineText));
-            } elseif (preg_match('/ at /', $roleLineText) && $roleLine->isBold()) {
-                $currentGroupIndex += 1;
-                $roleGroups[$currentGroupIndex] = [
-                    'title'   => '',
-                    'date'    => '',
-                    'summary' => '',
-                ];
-                $roleGroups[$currentGroupIndex]['title'] .= $roleLineText;
-                $previousLineWasBold = true;
-            } elseif ( ! preg_match('/^\(.*\)$/', $roleLineText) && !preg_match('/Page/', $roleLineText) && strlen($roleLineText) > 1) { // This indicates the duration, so skip it.
-                $previousLineWasBold = false;
-                $roleGroups[$currentGroupIndex]['summary'] .= $roleLineText . '\r\n';
+            if ($this->isDateLine($roleLineText)) {
+
+                if (!isset($roleLines[$key - 1])) {
+                    continue;
+                }
+
+
+                $textLine = $roleLines[$key - 1];
+                $roleLineTitleText = $textLine->getText();
+
+                $roleGroups[$currentGroupIndex] = [];
+                $roleGroups[$currentGroupIndex]['title'] = $roleLineTitleText;
+                $roleGroups[$currentGroupIndex]['date'] = $roleLineText;
+                $currentGroupIndex++;
             }
-            //--------Original code ----------------
-            // if (preg_match('/\s{2}-\s{2}/', $roleLineText)) {
-            //     $previousLineWasBold = false;
-            //     $roleGroups[$currentGroupIndex]['date'] = $roleLineText;
-            // } elseif ($roleLine->isBold()) {
-            //     if ( ! $previousLineWasBold) {
-            //         $currentGroupIndex += 1;
-            //         $roleGroups[$currentGroupIndex] = [
-            //             'title'   => '',
-            //             'date'    => '',
-            //             'summary' => '',
-            //         ];
-            //     }
-            //     $roleGroups[$currentGroupIndex]['title'] .= ' ' . $roleLineText;
-            //     $previousLineWasBold = true;
-            // } elseif ( ! preg_match('/^\(.*\)$/', $roleLineText)) { // This indicates the duration, so skip it.
-            //     $previousLineWasBold = false;
-            //     $roleGroups[$currentGroupIndex]['summary'] .= $roleLineText . '\r\n';
-            // }
+
         }
 
         foreach ($roleGroups as $roleGroup) {
@@ -585,14 +557,13 @@ class Parser
                     ->setOrganisation($organisation);
 
                 if ($roleGroup['date']) {
-                    list($start, $end) = $this->parseDateRange($roleGroup['date'], ' - ');
-
+                    list($start, $end) = $this->parseDateRange($roleGroup['date'], '-');
                     $roleType
                         ->setStart($start)
                         ->setEnd($end);
                 }
 
-                if ($roleGroup['summary']) {
+                if (isset($roleGroup['summary'])) {
                     $roleType->setSummary($roleGroup['summary']);
                 }
             }
@@ -601,6 +572,11 @@ class Parser
         }
 
         return $roleTypes;
+    }
+
+    private function isDateLine($text)
+    {
+        return preg_match('/.*\d{4}.*-.*(.*\d{4}|Present)/', $text);
     }
 
     /**
@@ -635,7 +611,9 @@ class Parser
     protected function splitAndTrim(string $delimiter, string $string): array
     {
         return array_map(
-            'trim',
+            function ($item) {
+                return trim($item, ' ');
+            },
             explode($delimiter, $string)
         );
     }
@@ -649,13 +627,12 @@ class Parser
      */
     protected function parseDateRange(string $datesLine, string $delimiter): array
     {
-        $dateParts = $this->splitAndTrim($delimiter, $datesLine);
-
+        $dateParts = $this->cleanDate($datesLine, $delimiter);
         if (count($dateParts) === 2) {
 
             $startDateTime = $this->parseStringToDateTime($dateParts[0]);
 
-            if ($dateParts[1] === 'Present') {
+            if ($dateParts[1] === 'Present' || $dateParts[1] === ' Present') {
                 $endDateTime = null;
             } else {
                 $endDateTime = $this->parseStringToDateTime($dateParts[1]);
@@ -668,6 +645,22 @@ class Parser
         } else {
             throw new ParseException("There was an error parsing the date range from the line '${datesLine}'");
         }
+    }
+
+    private function cleanDate($datesLine, string $delimiter = '-'): array
+    {
+        $dateParts = explode($delimiter, $datesLine);
+
+        if (count($dateParts) !== 2) {
+            return [];
+        }
+
+        return array_map(function ($item) {
+            $item = urlencode($item);
+            $item = preg_replace("@%[\dA-F]{2}@", '', $item);
+            $item = str_replace("+", ' ', $item);
+            return trim($item);
+        }, $dateParts);
     }
 
     /**
@@ -1126,9 +1119,6 @@ class Parser
         $previousLineType = null;
         $recommendations = [];
 
-        /** @var Recommendation $recommendation */
-        $recommendationText = '';
-
         foreach ($recommendationLines as $key => $recommendationLine) {
  
             $recommendationLineText = $recommendationLine->getText();
@@ -1166,47 +1156,6 @@ class Parser
                 $previousLineType = 'summary';
                 $recommendation->appendSummary($recommendationLineText);
             }
-
-            // Custom Code
-            // if (preg_match('/^&#34;\w/', $recommendationLineText)) {
-            //     $previousLineType = 'summary';
-            //     $recommendation = (new Recommendation())->appendSummary(trim($recommendationLineText));
-
-            //     if (isset($recommendation)) {
-            //         $recommendations[] = $recommendation;
-            //     }
-            // } elseif (preg_match('/^—/', $recommendationLine, $matches)) {
-            //     $previousLineType = 'name';
-            //     $matches = explode('—', $recommendationLine);
-
-            //     if (isset($recommendation)) {
-            //         $recommendation->setName($matches[1]);
-            //     }
-            // } elseif (preg_match('/^\,.*\,/', $recommendationLineText)) {
-            //     $previousLineType = 'position';
-            //     $matches = explode(',', $recommendationLineText);
-
-            //     if (isset($recommendation) && $recommendation) {
-            //         $recommendation->setPosition($matches[1]);
-            //     }
-            // } elseif (preg_match('/^\,/', $recommendationLine) && !preg_match('/^\,.*\,/', $recommendationLine)) {
-            //     $previousLineType = 'relation';
-            //     $matches = explode(',', $recommendationLine);
-            //     $matches[1] = trim(preg_replace('/[\s\x00]/u', ' ', $matches[1]));
-
-            //     if (isset($recommendation) && $recommendation) {
-            //         $recommendation->setRelation(ucfirst($matches[1]));
-            //     }
-            // } elseif (preg_match('/(.*)"$/', $recommendationLineText, $matches)) {
-            //     $previousLineType = 'summary';
-
-            //     if (isset($recommendation)) {
-            //         $recommendation->appendSummary($matches[1]);
-            //     }
-            // } else {
-            //     if($previousLineType == 'summary' && $recommendationLineText)
-            //         $recommendation->appendSummary($recommendationLineText);
-            // }
         }
 
         if (isset($recommendation) && !in_array($recommendation, $recommendations)) {
