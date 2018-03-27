@@ -742,10 +742,11 @@ class Parser
         for ($i = 0; $i < count($educationLines); $i++) {
 
             $educationLine = $educationLines[$i];
-
+            $educationLine = $educationLine->getText();
+            $educationLine = $this->cleanEducationTextLine($educationLine);
             /** @var EducationEntry $educationEntry */
-
             if (preg_match('/(.*?)\,\s(.*?)\,\s(\d{4})\s-\s(\d{4})$/', $educationLine, $matches)) { // "Bachelor of Arts, Theatre Management, 2006 - 2010"
+
                 $educationEntry
                     ->setLevel($matches[1])
                     ->setCourseTitle($matches[2])
@@ -802,6 +803,17 @@ class Parser
         }
 
         return $educationEntries;
+    }
+
+    private function cleanEducationTextLine($text)
+    {
+        $text = urlencode($text);
+        $text = str_replace("%2C", ',', $text);
+        $text = preg_replace("@%[\dA-F]{2}@", ' ', $text);
+        $text = preg_replace("/\s+/", ' ', $text);
+        $text = str_replace("+", ' ', $text);
+
+        return $text;
     }
 
     /**
@@ -1158,7 +1170,7 @@ class Parser
             $recommendationLineText = $recommendationLine->getText();
             $recommendationLineText = $this->cleanString($recommendationLineText);
             if (strpos($recommendationLineText, 'Profile Notes and Activity') === 0) {
-               break;
+                break;
             }
 
             if (preg_match('/^"(.*)\"$/', $recommendationLineText, $matches) || preg_match('/^"(.*)/', $recommendationLineText, $matches) || preg_match('/^&#34;\w/', $recommendationLineText, $matches)) {
